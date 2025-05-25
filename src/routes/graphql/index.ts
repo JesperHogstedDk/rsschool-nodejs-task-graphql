@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
+import { PrismaClient } from '@prisma/client';
+import { graphql, GraphQLBoolean, GraphQLEnumType, GraphQLFloat, GraphQLInputObjectType, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 import { createGqlResponseSchema, gqlResponseSchema } from './schemas.js';
-import { graphql, GraphQLBoolean, GraphQLEnumType, GraphQLFloat, GraphQLID, GraphQLInputObjectType, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
-import { Prisma, PrismaClient } from '@prisma/client';
 import { UUIDType } from './types/uuid.js';
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
@@ -33,7 +33,6 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
     },
   });
 }
-
 
 const MemberTypeIdEnum = new GraphQLEnumType({
   name: 'MemberTypeIdEnum',
@@ -67,20 +66,35 @@ const UserType = new GraphQLObjectType({
     balance: { type: GraphQLFloat },
     profile: {
       type: ProfileType,
-      resolve: async (_, { id }, PrismaClient) =>
-        await PrismaClient.profile.findFirst({ where: { id } }),
+      resolve: async (parent, _args, context: GqlContext) => {
+        return await context.prisma.profile.findUnique({ where: { userId: parent.id } })
+      },
     },
     posts: {
-      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(PostType))),
-      resolve: () => [],
+      type: new GraphQLList(PostType),
+      resolve: async (parent, _args, context: GqlContext) => {
+        return await context.prisma.post.findMany({ where: { authorId: parent.id } })
+      },
     },
     userSubscribedTo: {
-      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
-      resolve: () => [],
+      type: new GraphQLList(new GraphQLNonNull(UserType)),
+      resolve: async (parent, _args, context: GqlContext) => {
+        const user = await context.prisma.user.findUnique({
+          where: { id: parent.id },
+          include: { userSubscribedTo: { include: { author: true } } },
+        });
+        return user?.userSubscribedTo?.map((sub: { author }) => sub.author);
+      },
     },
     subscribedToUser: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
-      resolve: () => [],
+      resolve: async (parent, _args, context: GqlContext) => {
+        const user = await context.prisma.user.findUnique({
+          where: { id: parent.id },
+          include: { subscribedToUser: { include: { subscriber: true } } },
+        });
+        return user?.subscribedToUser?.map((sub: { subscriber }) => sub.subscriber);
+      },
     },
   }),
 });
@@ -264,17 +278,17 @@ const schema = new GraphQLSchema({
       createUser: {
         type: new GraphQLNonNull(UserType),
         args: { dto: { type: CreateUserInputType } },
-        resolve: (_, { dto }, { prisma }) => prisma.user.create({ data: dto })
+        resolve: (_, { dto }, context: GqlContext) => context.prisma.user.create({ data: dto })
       },
       createPost: {
         type: new GraphQLNonNull(PostType),
         args: { dto: { type: CreatePostInputType } },
-        resolve: (_, { dto }, { prisma }) => prisma.post.create({ data: dto })
+        resolve: (_, { dto }, context: GqlContext) => context.prisma.post.create({ data: dto })
       },
       createProfile: {
         type: new GraphQLNonNull(ProfileType),
         args: { dto: { type: CreateProfileInputType } },
-        resolve: (_, { dto }, { prisma }) => prisma.profile.create({ data: dto })
+        resolve: (_, { dto }, context: GqlContext) => context.prisma.profile.create({ data: dto })
       },
     },
   }),
