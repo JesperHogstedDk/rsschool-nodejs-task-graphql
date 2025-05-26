@@ -195,7 +195,7 @@ const ChangeUserInput = new GraphQLInputObjectType({
 });
 
 
-const schema = new GraphQLSchema({
+export const schema = new GraphQLSchema({
   query: new GraphQLObjectType({
     name: 'RootQuery',
     fields: {
