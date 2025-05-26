@@ -34,8 +34,12 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
   });
 }
 
-const MemberTypeIdEnum = new GraphQLEnumType({
-  name: 'MemberTypeIdEnum',
+type GqlContext = {
+  prisma: PrismaClient;
+};
+
+const MemberTypeId = new GraphQLEnumType({
+  name: 'MemberTypeId',
   values: {
     BASIC: { value: 'BASIC' },
     BUSINESS: { value: 'BUSINESS' },
@@ -45,13 +49,18 @@ const MemberTypeIdEnum = new GraphQLEnumType({
 const MemberType = new GraphQLObjectType({
   name: 'MemberType',
   fields: () => ({
-    id: { type: MemberTypeIdEnum },
+    id: { type: MemberTypeId },
     discount: { type: GraphQLFloat },
     postsLimitPerMonth: { type: GraphQLInt },
     profiles: {
       type: new GraphQLList(ProfileType),
       resolve: async (parent, _args, context: GqlContext) => {
-        return await context.prisma.profile.findMany({ where: { memberTypeId: parent.id } });
+        try {
+          return await context.prisma.profile.findMany({ where: { memberTypeId: parent.id } });
+        } catch (error) {
+          console.error("Error fetching profiles in MemberType.:", error);
+          throw new Error("Failed to fetch profiles in MemberType.");          
+        }
       },
     },
   }),
@@ -106,22 +115,27 @@ const ProfileType = new GraphQLObjectType({
     isMale: { type: GraphQLBoolean },
     yearOfBirth: { type: GraphQLInt },
     userId: { type: UUIDType },
-    memberTypeId: { type: MemberTypeIdEnum },
+    memberTypeId: { type: MemberTypeId },
     memberType: {
       type: MemberType,
       resolve: async (parent, _args, context: GqlContext) => {
         try {
           return await context.prisma.memberType.findUnique({ where: { id: parent.memberTypeId } });
         } catch (error) {
-          console.error("Error fetching memberType:", error);
-          throw error;
+          console.error("Error fetching memberType in ProfileType.:", error);
+          throw new Error("Failed to fetch memberType in ProfileType.");                    
         }
       },
     },
     user: {
       type: UserType,
       resolve: async (parent, _args, context: GqlContext) => {
-        return await context.prisma.user.findUnique({ where: { id: parent.userId } });
+        try {
+          return await context.prisma.user.findUnique({ where: { id: parent.userId } });
+        } catch (error) {
+          console.error("Error fetching user in ProfileType.:", error);
+          throw new Error("Failed to fetch user in ProfileType.");          
+        }
       },
     },
   }),
@@ -137,15 +151,16 @@ const PostType = new GraphQLObjectType({
     author: {
       type: UserType,
       resolve: async (parent, _args, context: GqlContext) => {
-        return await context.prisma.user.findUnique({ where: { id: parent.authorId } });
+        try {
+          return await context.prisma.user.findUnique({ where: { id: parent.authorId } });
+        } catch (error) {
+          console.error("Error fetching user in PostType.:", error);
+          throw new Error("Failed to fetch user in PostType.");
+        }
       },
     }
   }),
 });
-
-type GqlContext = {
-  prisma: PrismaClient;
-};
 
 const CreatePostInputType = new GraphQLInputObjectType({
   name: 'CreatePostInput',
@@ -163,7 +178,7 @@ const CreateProfileInputType = new GraphQLInputObjectType({
     userId: { type: UUIDType },
     isMale: { type: GraphQLBoolean },
     yearOfBirth: { type: GraphQLInt },
-    memberTypeId: { type: MemberTypeIdEnum },
+    memberTypeId: { type: MemberTypeId },
   },
 });
 
@@ -198,6 +213,7 @@ const schema = new GraphQLSchema({
             return await context.prisma.post.findUnique({ where: { id } });
           } catch (error) {
             console.error("Error fetching post:", error);
+            throw new Error("Failed to fetch post.");
           }
         },
       },
@@ -237,12 +253,12 @@ const schema = new GraphQLSchema({
       },
       memberType: {
         type: MemberType,
-        args: { id: { type: GraphQLString } },
+        args: { id: { type: MemberTypeId } },
         resolve: async (_, { id }, context: GqlContext) => {
           try {
             return await context.prisma.memberType.findUnique({ where: { id } });
           } catch (error) {
-            console.error("Error fetching profile:", error);
+            console.error("Error fetching memberType:", error);
             throw error;
           }
         },
